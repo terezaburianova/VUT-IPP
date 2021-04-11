@@ -1,3 +1,5 @@
 *.zip
 supplementary-tests
 ippcode.txt
+.vscode
+*.xml
