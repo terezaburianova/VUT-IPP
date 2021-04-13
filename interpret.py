@@ -7,7 +7,6 @@ import argparse
 import xml.etree.ElementTree as ET
 import sys
 import re
-import string
 
 ERR_INVALID_FORMAT = 31
 ERR_INVALID_STRUCT = 32
@@ -19,32 +18,34 @@ ERR_VALUE_MISSING = 56
 ERR_VALUE_WRONG = 57
 ERR_STRING = 58
 
+
 def err(msg, code):
     print(msg, file=sys.stderr)
     sys.exit(code)
 
+
 def value_validity(attr_type, text):
     text_regex = {
-        'var' : r'^(GF|LF|TF)@[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
-        'label' : r'^[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
-        'type' : r'^(int|string|bool)$',
-        'int' : r'^[\-]?[0-9]+$',
-        'bool' : r'^(true|false)$',
-        'string' : r'^([^\s#\\\\]|\\[0-9]{3})*$',
-        'nil' : r'^nil$'
+        'var': r'^(GF|LF|TF)@[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
+        'label': r'^[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
+        'type': r'^(int|string|bool)$',
+        'int': r'^[\-]?[0-9]+$',
+        'bool': r'^(true|false)$',
+        'string': r'^([^\s#\\\\]|\\[0-9]{3})*$',
+        'nil': r'^nil$'
     }
     if attr_type == 'string' and text is None:
         text = ''
     text.replace("\\\\", "\\")
     try:
-        if (re.search(re.compile(text_regex[attr_type]), text) is None):
+        if re.search(re.compile(text_regex[attr_type]), text) is None:
             return False
     except:
         err("Argument text is missing.", ERR_INVALID_STRUCT)
     return True
 
 
-class preparation:
+class Preparation:
     int_source = sys.stdin
     int_input = sys.stdin
     instruction_dict = {}
@@ -55,7 +56,7 @@ class preparation:
         self.fill_dictionary()
         self.xml_parse()
         self.xml_validity()
-        
+
     def fill_dictionary(self):
         for key in ['CREATEFRAME', 'PUSHFRAME', 'POPFRAME', 'RETURN', 'BREAK']:
             self.instruction_dict[key] = []
@@ -69,7 +70,8 @@ class preparation:
             self.instruction_dict[key] = ['var', 'symb']
         for key in ['READ']:
             self.instruction_dict[key] = ['var', 'type']
-        for key in ['ADD', 'SUB', 'MUL', 'IDIV', 'LT', 'GT', 'EQ', 'AND', 'OR', 'NOT', 'STRI2INT', 'CONCAT', 'GETCHAR', 'SETCHAR']:
+        for key in ['ADD', 'SUB', 'MUL', 'IDIV', 'LT', 'GT', 'EQ', 'AND', 'OR', 'NOT', 'STRI2INT', 'CONCAT', 'GETCHAR',
+                    'SETCHAR']:
             self.instruction_dict[key] = ['var', 'symb', 'symb']
         for key in ['JUMPIFEQ', 'JUMPIFNEQ']:
             self.instruction_dict[key] = ['label', 'symb', 'symb']
@@ -92,25 +94,25 @@ class preparation:
             self.root = tree.getroot()
         except:
             err("Invalid XML format.", ERR_INVALID_FORMAT)
-        #* check needed before sorting
+        # * check needed before sorting
         for child in list(self.root):
             if child.tag != 'instruction':
                 err("Invalid XML structure: 'instruction' expected.", ERR_INVALID_STRUCT)
-        #* sort instructions based on "order" attribute
+        # * sort instructions based on "order" attribute
         for child in self.root.iter():
-                self.root[:] = sorted(self.root.findall('instruction'), key=lambda child: int(child.get('order')))
+            self.root[:] = sorted(self.root.findall('instruction'), key=lambda child: int(child.get('order')))
 
     def xml_validity(self):
-        #* check program tag validity
+        # * check program tag validity
         if self.root.tag != 'program':
             err("The 'program' tag is missing.", ERR_INVALID_STRUCT)
-        if (not all(item in ['language', 'name', 'description'] for item in self.root.attrib)):
+        if not all(item in ['language', 'name', 'description'] for item in self.root.attrib):
             err("Invalid attributes in 'program'.", ERR_INVALID_STRUCT)
         if ('language' not in self.root.attrib) or (self.root.attrib['language'] != 'IPPcode21'):
             err("Attribute 'language' in 'program missing or invalid.", ERR_INVALID_STRUCT)
-        #* check instruction tag validity
+        # * check instruction tag validity
         for child in self.root.findall('instruction'):
-            if (not all(item in ['opcode', 'order'] for item in child.attrib)):
+            if not all(item in ['opcode', 'order'] for item in child.attrib):
                 err(f"Invalid attributes in 'instruction'.", ERR_INVALID_STRUCT)
             if ('opcode' not in child.attrib) or ('order' not in child.attrib):
                 err("Missing 'instruction' attribute 'order' or 'opcode'.", ERR_INVALID_STRUCT)
@@ -118,26 +120,26 @@ class preparation:
             if opcode not in self.instruction_dict:
                 err("Invalid instruction opcode.", ERR_INVALID_STRUCT)
             args_current = []
-            #* check instruction childern (args)
+            # * check instruction childern (args)
             argnum = 1
             for arg in list(child):
-                if arg.tag != ('arg' + str(argnum)): #* invalid tag name in args
+                if arg.tag != ('arg' + str(argnum)):  # * invalid tag name in args
                     err("Invalid tags.", ERR_INVALID_STRUCT)
                 if (len(arg.attrib) != 1) or ('type' not in arg.attrib):
                     err("Invalid 'arg' attributes.", ERR_INVALID_STRUCT)
                 type_attr = arg.get('type')
                 valid_type_attr = ['int', 'bool', 'string', 'nil', 'label', 'type', 'var']
-                if (type_attr is None) or (type_attr not in valid_type_attr): #* invalid type attribute in arg tags
+                if (type_attr is None) or (type_attr not in valid_type_attr):  # * invalid type attribute in arg tags
                     err("Invalid 'arg' attributes.", ERR_INVALID_STRUCT)
-                #* check text validity
+                # * check text validity
                 text_valid = value_validity(type_attr, arg.text)
                 if not text_valid:
                     err("Invalid text inside an argument.", ERR_INVALID_STRUCT)
-                #* change type attribute in case of symb
+                # * change type attribute in case of symb
                 if type_attr in ['string', 'int', 'nil', 'bool']:
                     type_attr = 'symb'
                 try:
-                    if type_attr == 'var' and self.instruction_dict[opcode][argnum-1] == 'symb':
+                    if type_attr == 'var' and self.instruction_dict[opcode][argnum - 1] == 'symb':
                         type_attr = 'symb'
                 except:
                     err("Invalid arguments.", ERR_INVALID_STRUCT)
@@ -146,7 +148,8 @@ class preparation:
             if args_current != self.instruction_dict[opcode.upper()]:
                 err("Invalid 'instruction' arguments.", ERR_INVALID_STRUCT)
 
-class frame:
+
+class Frame:
     def __init__(self):
         self.variables = {}
 
@@ -155,47 +158,73 @@ class frame:
             err(f"Variable '{var_name}' is already defined.", ERR_SEM)
         self.variables[var_name] = None
 
-    def edit_variable(self, var_name, var_value, var_type):
+    def edit_variable(self, var_name, value, value_type):
+        if value_type == 'int':
+            try:
+                value = int(value)
+            except:
+                err("Invalid int.", ERR_TYPES)
+        elif value_type == 'bool':
+            if value == 'true':
+                value = True
+            else:
+                value = False
+
         if var_name not in self.variables:
             err(f"Variable '{var_name}' does not exist.", ERR_VAR)
         if self.variables[var_name] is None:
-            self.variables[var_name] = [var_type, var_value]
+            self.variables[var_name] = [value_type, value]
         else:
-            if var_type != self.variables[var_name][0]:
+            if value_type != self.variables[var_name][0]:
                 err(f"Inavlid value type: variable is of type {self.variables[var_name][0]}.", ERR_SEM)
-            self.variables[var_name] = [var_type, var_value]
+            self.variables[var_name] = [value_type, value]
 
-class labels:
+    def get_var_value(self, var_name):
+        if var_name not in self.variables:
+            err(f"Variable '{var_name}' does not exist.", ERR_VAR)
+        if self.variables[var_name] is None:
+            err(f"The variable {var_name} has no value yet.", ERR_VALUE_MISSING)
+        return self.variables[var_name][1], self.variables[var_name][0]
+
+
+class Labels:
     labels_storage = {}
 
     def __init__(self, xml_root):
-        for instruction in xml_root.findall('instruction'):
+        instr_list = xml_root.findall('instruction')
+        for instruction in instr_list:
             if instruction.get('opcode') == 'LABEL':
                 label_name = instruction[0].text
                 if label_name in self.labels_storage:
                     err(f"Label {label_name} already exists.", ERR_SEM)
-                self.labels_storage[label_name] = instruction.get('order')
+                self.labels_storage[label_name] = instr_list.index(instruction)
 
-class interpret:
+
+class Interpret:
     GF = None
     TF = None
     LF_stack = []
     LF = None
-    stack_call = []
+    call_stack = []
+    current = 0
+    label = None
 
     def __init__(self):
-        prep = preparation()
-        self.GF = frame()    
-        label = labels(prep.root)
-        call_stack = []
-        # instruction_list = prep.root.findall('instruction')
-        for instruction in prep.root.findall('instruction'):
-            self.call_instruction(instruction.get('opcode').upper(), instruction)
+        prep = Preparation()
+        self.GF = Frame()
+        self.label = \
+            Labels(prep.root)
+        instruction_list = prep.root.findall('instruction')
+        self.current = 0
+        while self.current < len(instruction_list):
+            self.call_instruction(instruction_list[self.current].get('opcode').upper(), instruction_list[self.current])
+            self.current += 1
+        print('hotovo')  # TODO delete me later
 
     def call_instruction(self, name: str, instr):
         if hasattr(self, name) and callable(instr_method := getattr(self, name)):
             instr_method(instr)
-    
+
     def check_frame(self, frame_type):
         if frame_type == 'LF':
             if self.LF_stack:
@@ -206,34 +235,195 @@ class interpret:
             if self.TF is None:
                 err("Frame does not exist.", ERR_FRAME)
 
-    def MOVE(self, instr):
-        pass
+    def return_frame(self, instr, var_index):
+        var = instr[var_index].text.split('@', 1)
+        self.check_frame(var[0])
+        current_frame = getattr(self, var[0])
+        return current_frame, var[1]
 
-    def CREATEFRAME(self, instr):
-        self.TF = frame()
-    
-    def PUSHFRAME(self, instr):
+    def resolve_symb(self, instr, symb_index):
+        symb_type = instr[symb_index].get('type')
+        symb_val = None
+        if symb_type == 'var':
+            current_frame, var_name = self.return_frame(instr, symb_index)
+            symb_val, symb_type = current_frame.get_var_value(var_name)
+        elif symb_type == 'int':
+            symb_val = int(instr[symb_index].text)
+        elif symb_type == 'string' or symb_type == 'nil':
+            symb_val = instr[symb_index].text
+        elif symb_type == 'bool':
+            symb_val_read = instr[symb_index].text
+            if symb_val_read == 'true':
+                symb_val = True
+            else:
+                symb_val = False
+
+        return symb_val, symb_type
+
+    def MOVE(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        symb_val, symb_type = self.resolve_symb(instr, 1)
+        current_frame.edit_variable(var_name, symb_val, symb_type)
+
+    def CREATEFRAME(self, _):
+        self.TF = Frame()
+
+    def PUSHFRAME(self, _):
         if self.TF is None:
             err("Temporary frame is not defined.", ERR_FRAME)
         self.LF_stack.append(self.TF)
+        self.LF = self.LF_stack[-1]
         self.TF = None
-    
-    def POPFRAME(self, instr):
+
+    def POPFRAME(self, _):
         if not self.LF_stack:
             err("Local frame stack is empty.", ERR_FRAME)
         self.TF = self.LF_stack.pop()
+        if self.LF_stack:
+            self.LF = self.LF_stack[-1]
+        else:
+            self.LF = None
 
     def DEFVAR(self, instr):
-        var = instr[0].text.split('@', 1)
-        self.check_frame(var[0])
-        current_frame = getattr(self, var[0])
-        current_frame.define_variable(var[1])
-        
+        current_frame, var_name = self.return_frame(instr, 0)
+        current_frame.define_variable(var_name)
+
     def CALL(self, instr):
-        
+        self.call_stack.append(self.current)
+        if instr[0].text not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        self.current = self.label.labels_storage[instr[0].text]
 
-    def RETURN(self, instr):
+    def RETURN(self, _):
+        if not self.call_stack:
+            err("Call-stack value missing.", ERR_VALUE_MISSING)
+        self.current = self.call_stack.pop()
+        # TODO: tvoreni a uklizeni ramcu
+
+    def ADD(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'int' or v2_t != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 + v2, 'int')
+
+    def SUB(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'int' or v2_t != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 - v2, 'int')
+
+    def MUL(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'int' or v2_t != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 * v2, 'int')
+
+    def IDIV(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'int' or v2_t != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        if v2 == 0:
+            err("Division by zero.", ERR_VALUE_WRONG)
+        current_frame.edit_variable(var_name, v1 // v2, 'int')
+
+    def LT(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t == 'nil' or v2_t == 'nil':
+            err("Comparison with nil.", ERR_TYPES)
+        if v1_t != v2_t:
+            err("Comparing values of two different types.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 < v2, 'bool')
+
+    def GT(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t == 'nil' or v2_t == 'nil':
+            err("Comparison with nil.", ERR_TYPES)
+        if v1_t != v2_t:
+            err("Comparing values of two different types.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 > v2, 'bool')
+
+    def EQ(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t == 'nil' or v2_t == 'nil':
+            current_frame.edit_variable(var_name, v1_t == v2_t, 'bool')
+        if v1_t != v2_t:
+            err("Comparing values of two different types.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 == v2, 'bool')
+
+    def AND(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'bool' or v2_t != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 and v2, 'bool')
+
+    def OR(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if v1_t != 'bool' or v2_t != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        current_frame.edit_variable(var_name, v1 or v2, 'bool')
+
+    def NOT(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v, v_t = self.resolve_symb(instr, 1)
+        if v_t != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        current_frame.edit_variable(var_name, not v, 'bool')
+
+    def INT2CHAR(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v, v_t = self.resolve_symb(instr, 1)
+        if v_t != 'int':
+            err("INT2CHAR only accepts int value.", ERR_TYPES)
+        try:
+            value = chr(v)
+        except:
+            err("Unicode code is out of range.", ERR_STRING)
+        current_frame.edit_variable(var_name, value, 'string')
+
+    def STRI2INT(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        v, v_t = self.resolve_symb(instr, 1)
+        i, i_t = self.resolve_symb(instr, 2)
+        if v_t != 'string':
+            err("STRI2INT only accepts string value.", ERR_TYPES)
+        if i_t != 'int':
+            err("STRI2INT: invalid index type.", ERR_TYPES)
+        try:
+            value = ord(v[i])
+        except IndexError:
+            err("STRI2INT: index out of range.", ERR_STRING)
+        except:
+            err("Unicode code is out of range.", ERR_STRING)
+        current_frame.edit_variable(var_name, value, 'int')
+
+    def WRITE(self, instr):
+        print(self.resolve_symb(instr, 0)[0])
+
+    def JUMP(self, instr):
+        if instr[0].text not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        self.current = self.label.labels_storage[instr[0].text]
+
+    def LABEL(self, _):
+        pass
 
 
-
-interpret()
+Interpret()
