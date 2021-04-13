@@ -84,9 +84,9 @@ class Preparation:
         args = parser.parse_args()
         if not (args.source or args.input):
             parser.error('Add -source or -input. See --help for more info.')
-        elif args.source:
+        if args.source:
             self.int_source = args.source
-        else:
+        if args.input:
             self.int_input = open(args.input, "r")
 
     def xml_parse(self):
