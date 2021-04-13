@@ -63,7 +63,7 @@ class Preparation:
             self.instruction_dict[key] = []
         for key in ['DEFVAR', 'POPS']:
             self.instruction_dict[key] = ['var']
-        for key in ['CALL', 'LABEL', 'JUMP']:
+        for key in ['CALL', 'LABEL', 'JUMP', 'JUMPIFEQS', 'JUMPIFNEQS']:
             self.instruction_dict[key] = ['label']
         for key in ['PUSHS', 'WRITE', 'EXIT', 'DPRINT']:
             self.instruction_dict[key] = ['symb']
@@ -76,6 +76,8 @@ class Preparation:
             self.instruction_dict[key] = ['var', 'symb', 'symb']
         for key in ['JUMPIFEQ', 'JUMPIFNEQ']:
             self.instruction_dict[key] = ['label', 'symb', 'symb']
+        for key in ['CLEARS', 'ADDS', 'SUBS', 'MULS', 'IDIVS', 'LTS', 'GTS', 'EQS', 'ANDS', 'ORS', 'NOTS', 'INT2CHARS', 'STRI2INTS']:
+            self.instruction_dict[key] = []
 
     def argument_parse(self):
         parser = argparse.ArgumentParser(description='Add path to source or input. At least one has to be set.')
@@ -409,6 +411,7 @@ class Interpret:
         v2, v2_t = self.resolve_symb(instr, 2)
         if v1_t == 'nil' or v2_t == 'nil':
             current_frame.edit_variable(var_name, v1_t == v2_t, 'bool')
+            return
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1_t == 'bool':
@@ -605,6 +608,290 @@ class Interpret:
         if value < 0 or value > 49:
             err("EXIT: Value out of range.", ERR_VALUE_WRONG)
         sys.exit(value)
+
+    def DPRINT(self, instr):
+        value, _ = self.resolve_symb(instr, 0)
+        print(value, file=sys.stderr)
+
+    def BREAK(self, instr):
+        GF_val = self.GF.variables
+        if self.TF:
+            TF_val = self.TF.variables
+        else:
+            TF_val = 'None'
+        if self.LF:
+            LF_val = self.LF.variables
+        else:
+            LF_val = 'None'
+        string = f"\nIndex in the instructions list: {self.current}\n" \
+                 f"Instruction order: {instr.get('order')}\n" \
+                 f"Global frame: \n{GF_val}\n" \
+                 f"Temporary frame: \n{TF_val}\n" \
+                 f"Local frame: \n{LF_val}\n" \
+                 f"Local frames in stack: {len(self.LF_stack)}\n"
+        print(string, file=sys.stderr)
+
+    ########## STACK BONUS ##########
+    def CLEARS(self, _):
+        self.data_stack.clear()
+
+    def ADDS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'int' or v2[1] != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        self.data_stack.append([v1[0]+v2[0], 'int'])
+
+    def SUBS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'int' or v2[1] != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        self.data_stack.append([v1[0]-v2[0], 'int'])
+
+    def MULS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'int' or v2[1] != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        self.data_stack.append([v1[0]*v2[0], 'int'])
+
+    def IDIVS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'int' or v2[1] != 'int':
+            err("Non-numeric value in arithmetic instruction.", ERR_TYPES)
+        if v2[0] == 0:
+            err("Division by zero.", ERR_VALUE_WRONG)
+        self.data_stack.append([v1[0] // v2[0], 'int'])
+
+    def LTS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] == 'nil' or v2[1] == 'nil':
+            err("Comparison with nil.", ERR_TYPES)
+        if v1[1] != v2[1]:
+            err("Comparing values of two different types.", ERR_TYPES)
+        if v1[1] == 'bool':
+            if v1[0] == 'true':
+                v1[0] = True
+            else:
+                v1[0] = False
+        if v2[1] == 'bool':
+            if v2[0] == 'true':
+                v2[0] = True
+            else:
+                v2[0] = False
+        value = v1[0] < v2[0]
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def GTS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] == 'nil' or v2[1] == 'nil':
+            err("Comparison with nil.", ERR_TYPES)
+        if v1[1] != v2[1]:
+            err("Comparing values of two different types.", ERR_TYPES)
+        if v1[1] == 'bool':
+            if v1[0] == 'true':
+                v1[0] = True
+            else:
+                v1[0] = False
+        if v2[1] == 'bool':
+            if v2[0] == 'true':
+                v2[0] = True
+            else:
+                v2[0] = False
+        value = v1[0] > v2[0]
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def EQS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] == 'nil' or v2[1] == 'nil':
+            value = (v1[1] == v2[1])
+            if value:
+                value = 'true'
+            else:
+                value = 'false'
+            self.data_stack.append([value, 'bool'])
+            return
+        if v1[1] != v2[1]:
+            err("Comparing values of two different types.", ERR_TYPES)
+        if v1[1] == 'bool':
+            if v1[0] == 'true':
+                v1[0] = True
+            else:
+                v1[0] = False
+        if v2[1] == 'bool':
+            if v2[0] == 'true':
+                v2[0] = True
+            else:
+                v2[0] = False
+        value = (v1[0] == v2[0])
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def ANDS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'bool' or v2[1] != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        if v1[0] == 'true':
+            v1[0] = True
+        else:
+            v1[0] = False
+        if v2[0] == 'true':
+            v2[0] = True
+        else:
+            v2[0] = False
+        value = v1[0] and v2[0]
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def ORS(self, _):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v1[1] != 'bool' or v2[1] != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        if v1[0] == 'true':
+            v1[0] = True
+        else:
+            v1[0] = False
+        if v2[0] == 'true':
+            v2[0] = True
+        else:
+            v2[0] = False
+        value = v1[0] or v2[0]
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def NOTS(self, _):
+        try:
+            v = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v[1] != 'bool':
+            err("Logical operators only accept bool values.", ERR_TYPES)
+        if v[0] == 'true':
+            v[0] = True
+        else:
+            v[0] = False
+        value = not v[0]
+        if value:
+            value = 'true'
+        else:
+            value = 'false'
+        self.data_stack.append([value, 'bool'])
+
+    def INT2CHARS(self, _):
+        try:
+            v = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v[1] != 'int':
+            err("INT2CHAR only accepts int value.", ERR_TYPES)
+        try:
+            value = chr(v[0])
+        except:
+            err("Unicode code is out of range.", ERR_STRING)
+        self.data_stack.append([value, 'string'])
+
+    def STRI2INTS(self, _):
+        try:
+            i = self.data_stack.pop()
+            v = self.data_stack.pop()
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if v[1] != 'string':
+            err("STRI2INT only accepts string value.", ERR_TYPES)
+        if i[1] != 'int':
+            err("STRI2INT: invalid index type.", ERR_TYPES)
+        try:
+            value = ord(v[0][i[0]])
+        except IndexError:
+            err("STRI2INT: index out of range.", ERR_STRING)
+        except:
+            err("Unicode code is out of range.", ERR_STRING)
+        self.data_stack.append([value, 'int'])
+
+    def JUMPIFEQS(self, instr):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+            lbl = instr[0].text
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if lbl not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        if (v1[1] == 'nil' or v2[1] == 'nil') or (v1[1] == v2[1]):
+            if v1[1] == 'nil' and v2[1] == 'nil':
+                self.current = self.label.labels_storage[lbl]
+            elif v1[1] == v2[1] and v1[0] == v2[0]:
+                self.current = self.label.labels_storage[lbl]
+        else:
+            err("Comparing values of two different types.", ERR_TYPES)
+
+    def JUMPIFNEQS(self, instr):
+        try:
+            v2 = self.data_stack.pop()
+            v1 = self.data_stack.pop()
+            lbl = instr[0].text
+        except:
+            err("The data stack is empty.", ERR_VALUE_MISSING)
+        if lbl not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        if (v1[1] == 'nil' or v2[1] == 'nil') or (v1[1] == v2[1]):
+            if v1[1] == v2[1] and v1[0] != v2[0]:
+                self.current = self.label.labels_storage[lbl]
+            if (v1[1] == 'nil' and v2[1] != 'nil') or (v1[1] != 'nil' and v2[1] == 'nil'):
+                self.current = self.label.labels_storage[lbl]
+        else:
+            err("Comparing values of two different types.", ERR_TYPES)
 
 
 Interpret()
