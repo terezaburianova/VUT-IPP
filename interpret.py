@@ -7,6 +7,7 @@ import argparse
 import xml.etree.ElementTree as ET
 import sys
 import re
+import string
 
 ERR_INVALID_FORMAT = 31
 ERR_INVALID_STRUCT = 32
@@ -86,7 +87,7 @@ class Preparation:
         elif args.source:
             self.int_source = args.source
         else:
-            self.int_input = args.input
+            self.int_input = open(args.input, "r")
 
     def xml_parse(self):
         try:
@@ -94,13 +95,31 @@ class Preparation:
             self.root = tree.getroot()
         except:
             err("Invalid XML format.", ERR_INVALID_FORMAT)
-        # * check needed before sorting
+        # * checks needed before sorting
+        orders = []
         for child in list(self.root):
             if child.tag != 'instruction':
                 err("Invalid XML structure: 'instruction' expected.", ERR_INVALID_STRUCT)
+            try:
+                if (int(child.get('order')) < 1) or (int(child.get('order')) in orders):
+                    err("Invalid order.", ERR_INVALID_STRUCT)
+                orders.append(int(child.get('order')))
+            except:
+                err("Invalid order.", ERR_INVALID_STRUCT)
         # * sort instructions based on "order" attribute
+
         for child in self.root.iter():
-            self.root[:] = sorted(self.root.findall('instruction'), key=lambda child: int(child.get('order')))
+            try:
+                self.root[:] = sorted(self.root.findall('instruction'), key=lambda child: int(child.get('order')))
+            except:
+                err("Invalid order.", ERR_INVALID_STRUCT)
+
+        # TODO: razeni argumentu - nefunkcni!
+        # for arg in self.root.iter():
+        #     try:
+        #         self.root[:] = sorted(self.root.findall("instruction/*"), key=lambda arg: arg.tag)
+        #     except:
+        #         err("wrong value", ERR_INVALID_STRUCT)
 
     def xml_validity(self):
         # * check program tag validity
@@ -164,26 +183,19 @@ class Frame:
                 value = int(value)
             except:
                 err("Invalid int.", ERR_TYPES)
-        elif value_type == 'bool':
-            if value == 'true':
-                value = True
+
+        if var_name not in self.variables:
+            err(f"Variable '{var_name}' does not exist.", ERR_VAR)
+        self.variables[var_name] = [value_type, value]
+
+    def get_var_value(self, var_name, geterr=True):
+        if var_name not in self.variables:
+            err(f"Variable '{var_name}' does not exist.", ERR_VAR)
+        if self.variables[var_name] is None:
+            if geterr:
+                err(f"The variable {var_name} has no value yet.", ERR_VALUE_MISSING)
             else:
-                value = False
-
-        if var_name not in self.variables:
-            err(f"Variable '{var_name}' does not exist.", ERR_VAR)
-        if self.variables[var_name] is None:
-            self.variables[var_name] = [value_type, value]
-        else:
-            if value_type != self.variables[var_name][0]:
-                err(f"Inavlid value type: variable is of type {self.variables[var_name][0]}.", ERR_SEM)
-            self.variables[var_name] = [value_type, value]
-
-    def get_var_value(self, var_name):
-        if var_name not in self.variables:
-            err(f"Variable '{var_name}' does not exist.", ERR_VAR)
-        if self.variables[var_name] is None:
-            err(f"The variable {var_name} has no value yet.", ERR_VALUE_MISSING)
+                return '', ''
         return self.variables[var_name][1], self.variables[var_name][0]
 
 
@@ -206,20 +218,21 @@ class Interpret:
     LF_stack = []
     LF = None
     call_stack = []
+    data_stack = []
     current = 0
     label = None
+    prep = None
 
     def __init__(self):
-        prep = Preparation()
+        self.prep = Preparation()
         self.GF = Frame()
-        self.label = \
-            Labels(prep.root)
-        instruction_list = prep.root.findall('instruction')
+        self.label = Labels(self.prep.root)
+        instruction_list = self.prep.root.findall('instruction')
         self.current = 0
         while self.current < len(instruction_list):
             self.call_instruction(instruction_list[self.current].get('opcode').upper(), instruction_list[self.current])
             self.current += 1
-        print('hotovo')  # TODO delete me later
+        self.prep.int_input.close()
 
     def call_instruction(self, name: str, instr):
         if hasattr(self, name) and callable(instr_method := getattr(self, name)):
@@ -241,22 +254,16 @@ class Interpret:
         current_frame = getattr(self, var[0])
         return current_frame, var[1]
 
-    def resolve_symb(self, instr, symb_index):
+    def resolve_symb(self, instr, symb_index, geterr=True):
         symb_type = instr[symb_index].get('type')
         symb_val = None
         if symb_type == 'var':
             current_frame, var_name = self.return_frame(instr, symb_index)
-            symb_val, symb_type = current_frame.get_var_value(var_name)
+            symb_val, symb_type = current_frame.get_var_value(var_name, geterr)
         elif symb_type == 'int':
             symb_val = int(instr[symb_index].text)
-        elif symb_type == 'string' or symb_type == 'nil':
+        else:
             symb_val = instr[symb_index].text
-        elif symb_type == 'bool':
-            symb_val_read = instr[symb_index].text
-            if symb_val_read == 'true':
-                symb_val = True
-            else:
-                symb_val = False
 
         return symb_val, symb_type
 
@@ -300,6 +307,17 @@ class Interpret:
         self.current = self.call_stack.pop()
         # TODO: tvoreni a uklizeni ramcu
 
+    def PUSHS(self, instr):
+        v1, v1_t = self.resolve_symb(instr, 0)
+        self.data_stack.append([v1, v1_t])
+
+    def POPS(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        if not self.data_stack:
+            err("Data stack is empty.", ERR_VALUE_MISSING)
+        value = self.data_stack.pop()
+        current_frame.edit_variable(var_name, value[0], value[1])
+
     def ADD(self, instr):
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
@@ -342,6 +360,16 @@ class Interpret:
             err("Comparison with nil.", ERR_TYPES)
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1_t == 'bool':
+            if v1 == 'true':
+                v1 = True
+            else:
+                v1 = False
+        if v2_t == 'bool':
+            if v2 == 'true':
+                v2 = True
+            else:
+                v2 = False
         current_frame.edit_variable(var_name, v1 < v2, 'bool')
 
     def GT(self, instr):
@@ -352,6 +380,16 @@ class Interpret:
             err("Comparison with nil.", ERR_TYPES)
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1_t == 'bool':
+            if v1 == 'true':
+                v1 = True
+            else:
+                v1 = False
+        if v2_t == 'bool':
+            if v2 == 'true':
+                v2 = True
+            else:
+                v2 = False
         current_frame.edit_variable(var_name, v1 > v2, 'bool')
 
     def EQ(self, instr):
@@ -362,6 +400,16 @@ class Interpret:
             current_frame.edit_variable(var_name, v1_t == v2_t, 'bool')
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1_t == 'bool':
+            if v1 == 'true':
+                v1 = True
+            else:
+                v1 = False
+        if v2_t == 'bool':
+            if v2 == 'true':
+                v2 = True
+            else:
+                v2 = False
         current_frame.edit_variable(var_name, v1 == v2, 'bool')
 
     def AND(self, instr):
@@ -370,6 +418,14 @@ class Interpret:
         v2, v2_t = self.resolve_symb(instr, 2)
         if v1_t != 'bool' or v2_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
+        if v1 == 'true':
+            v1 = True
+        else:
+            v1 = False
+        if v2 == 'true':
+            v2 = True
+        else:
+            v2 = False
         current_frame.edit_variable(var_name, v1 and v2, 'bool')
 
     def OR(self, instr):
@@ -378,6 +434,14 @@ class Interpret:
         v2, v2_t = self.resolve_symb(instr, 2)
         if v1_t != 'bool' or v2_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
+        if v1 == 'true':
+            v1 = True
+        else:
+            v1 = False
+        if v2 == 'true':
+            v2 = True
+        else:
+            v2 = False
         current_frame.edit_variable(var_name, v1 or v2, 'bool')
 
     def NOT(self, instr):
@@ -385,6 +449,10 @@ class Interpret:
         v, v_t = self.resolve_symb(instr, 1)
         if v_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
+        if v == 'true':
+            v = True
+        else:
+            v = False
         current_frame.edit_variable(var_name, not v, 'bool')
 
     def INT2CHAR(self, instr):
@@ -414,16 +482,123 @@ class Interpret:
             err("Unicode code is out of range.", ERR_STRING)
         current_frame.edit_variable(var_name, value, 'int')
 
+    def READ(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        value = self.prep.int_input.readline()
+        in_type = instr[1].text
+        if in_type == 'int':
+            if value_validity('int', value):
+                value = int(value)
+            else:
+                in_type = 'nil'
+                value = 'nil'
+        elif in_type == 'bool':
+            if value != 'true':
+                value = 'false'
+        elif in_type == 'string':
+            value = value.rstrip()
+        current_frame.edit_variable(var_name, value, in_type)
+
     def WRITE(self, instr):
-        print(self.resolve_symb(instr, 0)[0])
+        value, out_type = self.resolve_symb(instr, 0)
+        if out_type == 'nil':
+            value = ''
+        elif out_type == 'string':
+            matches = re.findall(r'\\[0-9]{3}', value)
+            for val in matches:
+                char = chr(int(val[2:]))
+                value = value.replace(val, char)
+        print(value, end='')
+
+    def CONCAT(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        s1, s1_t = self.resolve_symb(instr, 1)
+        s2, s2_t = self.resolve_symb(instr, 2)
+        if s1_t != 'string' or s2_t != 'string':
+            err("Value is not of type string.", ERR_TYPES)
+        current_frame.edit_variable(var_name, s1+s2, 'string')
+
+    def STRLEN(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        s, s_t = self.resolve_symb(instr, 1)
+        if s_t != 'string':
+            err("Value is not of type string.", ERR_TYPES)
+        current_frame.edit_variable(var_name, len(s), 'int')
+
+    def GETCHAR(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        s, s_t = self.resolve_symb(instr, 1)
+        i, i_t = self.resolve_symb(instr, 2)
+        if s_t != 'string' or i_t != 'int':
+            err("Invalid value types.", ERR_TYPES)
+        i = int(i)
+        try:
+            char = s[i]
+        except IndexError:
+            err("GETCHAR: index out of range.", ERR_STRING)
+        current_frame.edit_variable(var_name, char, 'string')
+
+    def SETCHAR(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        s, s_t = current_frame.get_var_value(var_name)
+        i, i_t = self.resolve_symb(instr, 1)
+        ch, ch_t = self.resolve_symb(instr, 2)
+        if ch_t != 'string' or i_t != 'int' or s_t != 'string':
+            err("Invalid value types.", ERR_TYPES)
+        i = int(i)
+        try:
+            s[i] = ch
+        except IndexError:
+            err("SETCHAR: index out of range.", ERR_STRING)
+        current_frame.edit_variable(var_name, s, 'string')
+
+    def TYPE(self, instr):
+        current_frame, var_name = self.return_frame(instr, 0)
+        t, t_t = self.resolve_symb(instr, 1, False)
+        current_frame.edit_variable(var_name, t_t, 'string')
+
+    def LABEL(self, _):
+        pass
 
     def JUMP(self, instr):
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         self.current = self.label.labels_storage[instr[0].text]
 
-    def LABEL(self, _):
-        pass
+    def JUMPIFEQ(self, instr):
+        if instr[0].text not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if (v1_t == 'nil' or v2_t == 'nil') or (v1_t == v2_t):
+            if v1_t == 'nil' and v2_t == 'nil':
+                self.current = self.label.labels_storage[instr[0].text]
+            elif v1_t == v2_t and v1 == v2:
+                self.current = self.label.labels_storage[instr[0].text]
+        else:
+            err("Comparing values of two different types.", ERR_TYPES)
+
+    def JUMPIFNEQ(self, instr):
+        if instr[0].text not in self.label.labels_storage:
+            err("Label does not exist.", ERR_SEM)
+        v1, v1_t = self.resolve_symb(instr, 1)
+        v2, v2_t = self.resolve_symb(instr, 2)
+        if (v1_t == 'nil' or v2_t == 'nil') or (v1_t == v2_t):
+            if v1_t == v2_t and v1 != v2:
+                self.current = self.label.labels_storage[instr[0].text]
+            if (v1_t == 'nil' and v2_t != 'nil') or (v1_t != 'nil' and v2_t == 'nil'):
+                self.current = self.label.labels_storage[instr[0].text]
+        else:
+            err("Comparing values of two different types.", ERR_TYPES)
+
+    def EXIT(self, instr):
+        value, symb_type = self.resolve_symb(instr, 0)
+        if symb_type != 'int':
+            err("EXIT: Invalid value.", ERR_VALUE_WRONG)
+        value = int(value)
+        if value < 0 or value > 49:
+            err("EXIT: Value out of range.", ERR_VALUE_WRONG)
+        sys.exit(value)
 
 
 Interpret()
