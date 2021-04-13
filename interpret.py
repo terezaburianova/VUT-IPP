@@ -78,7 +78,7 @@ class Preparation:
             self.instruction_dict[key] = ['label', 'symb', 'symb']
 
     def argument_parse(self):
-        parser = argparse.ArgumentParser(description='Parse the arguments.')
+        parser = argparse.ArgumentParser(description='Add path to source or input. At least one has to be set.')
         parser.add_argument('--source')
         parser.add_argument('--input')
         args = parser.parse_args()
@@ -262,10 +262,21 @@ class Interpret:
             symb_val, symb_type = current_frame.get_var_value(var_name, geterr)
         elif symb_type == 'int':
             symb_val = int(instr[symb_index].text)
+        elif symb_type == 'string':
+            symb_val = self.replace_sequences(instr[symb_index].text)
         else:
             symb_val = instr[symb_index].text
-
         return symb_val, symb_type
+
+    def replace_sequences(self, value):
+        matches = re.findall(r'\\[0-9]{3}', value)
+        for val in matches:
+            try:
+                char = chr(int(val[2:]))
+            except:
+                err("Error converting the escape sequence.", ERR_STRING)
+            value = value.replace(val, char)
+        return value
 
     def MOVE(self, instr):
         current_frame, var_name = self.return_frame(instr, 0)
@@ -503,11 +514,6 @@ class Interpret:
         value, out_type = self.resolve_symb(instr, 0)
         if out_type == 'nil':
             value = ''
-        elif out_type == 'string':
-            matches = re.findall(r'\\[0-9]{3}', value)
-            for val in matches:
-                char = chr(int(val[2:]))
-                value = value.replace(val, char)
         print(value, end='')
 
     def CONCAT(self, instr):
