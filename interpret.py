@@ -67,11 +67,11 @@ class Preparation:
             self.instruction_dict[key] = ['label']
         for key in ['PUSHS', 'WRITE', 'EXIT', 'DPRINT']:
             self.instruction_dict[key] = ['symb']
-        for key in ['MOVE', 'INT2CHAR', 'STRLEN', 'TYPE']:
+        for key in ['MOVE', 'INT2CHAR', 'STRLEN', 'TYPE', 'NOT']:
             self.instruction_dict[key] = ['var', 'symb']
         for key in ['READ']:
             self.instruction_dict[key] = ['var', 'type']
-        for key in ['ADD', 'SUB', 'MUL', 'IDIV', 'LT', 'GT', 'EQ', 'AND', 'OR', 'NOT', 'STRI2INT', 'CONCAT', 'GETCHAR',
+        for key in ['ADD', 'SUB', 'MUL', 'IDIV', 'LT', 'GT', 'EQ', 'AND', 'OR', 'STRI2INT', 'CONCAT', 'GETCHAR',
                     'SETCHAR']:
             self.instruction_dict[key] = ['var', 'symb', 'symb']
         for key in ['JUMPIFEQ', 'JUMPIFNEQ']:
@@ -185,6 +185,11 @@ class Frame:
                 value = int(value)
             except:
                 err("Invalid int.", ERR_TYPES)
+        elif value_type == 'bool' and value != 'true' and value != 'false':
+            if value:
+                value = 'true'
+            elif not value:
+                value = 'false'
 
         if var_name not in self.variables:
             err(f"Variable '{var_name}' does not exist.", ERR_VAR)
@@ -265,7 +270,10 @@ class Interpret:
         elif symb_type == 'int':
             symb_val = int(instr[symb_index].text)
         elif symb_type == 'string':
-            symb_val = self.replace_sequences(instr[symb_index].text)
+            if instr[symb_index].text:
+                symb_val = self.replace_sequences(instr[symb_index].text)
+            else:
+                symb_val = ''
         else:
             symb_val = instr[symb_index].text
         return symb_val, symb_type
@@ -279,6 +287,18 @@ class Interpret:
                 err("Error converting the escape sequence.", ERR_STRING)
             value = value.replace(val, char)
         return value
+
+    def bool_ipp_to_py(self, value):
+        if value == 'true':
+            return True
+        if value == 'false':
+            return False
+
+    def bool_py_to_ipp(self, value):
+        if value:
+            return 'true'
+        if not value:
+            return 'false'
 
     def MOVE(self, instr):
         current_frame, var_name = self.return_frame(instr, 0)
@@ -374,15 +394,8 @@ class Interpret:
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1_t == 'bool':
-            if v1 == 'true':
-                v1 = True
-            else:
-                v1 = False
-        if v2_t == 'bool':
-            if v2 == 'true':
-                v2 = True
-            else:
-                v2 = False
+            v1 = self.bool_ipp_to_py(v1)
+            v2 = self.bool_ipp_to_py(v2)
         current_frame.edit_variable(var_name, v1 < v2, 'bool')
 
     def GT(self, instr):
@@ -394,15 +407,8 @@ class Interpret:
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1_t == 'bool':
-            if v1 == 'true':
-                v1 = True
-            else:
-                v1 = False
-        if v2_t == 'bool':
-            if v2 == 'true':
-                v2 = True
-            else:
-                v2 = False
+            v1 = self.bool_ipp_to_py(v1)
+            v2 = self.bool_ipp_to_py(v2)
         current_frame.edit_variable(var_name, v1 > v2, 'bool')
 
     def EQ(self, instr):
@@ -415,15 +421,8 @@ class Interpret:
         if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1_t == 'bool':
-            if v1 == 'true':
-                v1 = True
-            else:
-                v1 = False
-        if v2_t == 'bool':
-            if v2 == 'true':
-                v2 = True
-            else:
-                v2 = False
+            v1 = self.bool_ipp_to_py(v1)
+            v2 = self.bool_ipp_to_py(v2)
         current_frame.edit_variable(var_name, v1 == v2, 'bool')
 
     def AND(self, instr):
@@ -432,14 +431,8 @@ class Interpret:
         v2, v2_t = self.resolve_symb(instr, 2)
         if v1_t != 'bool' or v2_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v1 == 'true':
-            v1 = True
-        else:
-            v1 = False
-        if v2 == 'true':
-            v2 = True
-        else:
-            v2 = False
+        v1 = self.bool_ipp_to_py(v1)
+        v2 = self.bool_ipp_to_py(v2)
         current_frame.edit_variable(var_name, v1 and v2, 'bool')
 
     def OR(self, instr):
@@ -448,14 +441,8 @@ class Interpret:
         v2, v2_t = self.resolve_symb(instr, 2)
         if v1_t != 'bool' or v2_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v1 == 'true':
-            v1 = True
-        else:
-            v1 = False
-        if v2 == 'true':
-            v2 = True
-        else:
-            v2 = False
+        v1 = self.bool_ipp_to_py(v1)
+        v2 = self.bool_ipp_to_py(v2)
         current_frame.edit_variable(var_name, v1 or v2, 'bool')
 
     def NOT(self, instr):
@@ -463,10 +450,7 @@ class Interpret:
         v, v_t = self.resolve_symb(instr, 1)
         if v_t != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v == 'true':
-            v = True
-        else:
-            v = False
+        v = self.bool_ipp_to_py(v)
         current_frame.edit_variable(var_name, not v, 'bool')
 
     def INT2CHAR(self, instr):
@@ -488,6 +472,8 @@ class Interpret:
             err("STRI2INT only accepts string value.", ERR_TYPES)
         if i_t != 'int':
             err("STRI2INT: invalid index type.", ERR_TYPES)
+        if i < 0 or i >= len(v):
+            err("STRI2INT: index out of range.", ERR_STRING)
         try:
             value = ord(v[i])
         except IndexError:
@@ -499,7 +485,12 @@ class Interpret:
     def READ(self, instr):
         current_frame, var_name = self.return_frame(instr, 0)
         value = self.prep.int_input.readline()
-        in_type = instr[1].text
+        if value == '':
+            value = 'nil'
+            in_type = 'nil'
+        else:
+            in_type = instr[1].text
+        value = value.rstrip()
         if in_type == 'int':
             if value_validity('int', value):
                 value = int(value)
@@ -507,10 +498,8 @@ class Interpret:
                 in_type = 'nil'
                 value = 'nil'
         elif in_type == 'bool':
-            if value != 'true':
+            if value.lower() != 'true':
                 value = 'false'
-        elif in_type == 'string':
-            value = value.rstrip()
         current_frame.edit_variable(var_name, value, in_type)
 
     def WRITE(self, instr):
@@ -541,6 +530,8 @@ class Interpret:
         if s_t != 'string' or i_t != 'int':
             err("Invalid value types.", ERR_TYPES)
         i = int(i)
+        if i >= len(s) or i < 0:
+            err("Index out of range.", ERR_STRING)
         try:
             char = s[i]
         except IndexError:
@@ -554,9 +545,14 @@ class Interpret:
         ch, ch_t = self.resolve_symb(instr, 2)
         if ch_t != 'string' or i_t != 'int' or s_t != 'string':
             err("Invalid value types.", ERR_TYPES)
-        i = int(i)
         try:
-            s[i] = ch
+            ch = ch[0]
+        except:
+            err("SETCHAR: empty character.", ERR_STRING)
+        if i < 0 or i >= len(s):
+            err("SETCHAR: index out of range.", ERR_STRING)
+        try:
+            s = s[:i] + ch + s[i + 1:]
         except IndexError:
             err("SETCHAR: index out of range.", ERR_STRING)
         current_frame.edit_variable(var_name, s, 'string')
@@ -579,31 +575,43 @@ class Interpret:
             err("Label does not exist.", ERR_SEM)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
-        if (v1_t == 'nil' or v2_t == 'nil') or (v1_t == v2_t):
-            if v1_t == 'nil' and v2_t == 'nil':
+        if v1_t == 'nil' or v2_t == 'nil':
+            if v1_t == v2_t:
                 self.current = self.label.labels_storage[instr[0].text]
-            elif v1_t == v2_t and v1 == v2:
-                self.current = self.label.labels_storage[instr[0].text]
-        else:
+                return
+            else:
+                return
+        if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1_t == 'bool':
+            v1 = self.bool_ipp_to_py(v1)
+            v2 = self.bool_ipp_to_py(v2)
+        if v1 == v2:
+            self.current = self.label.labels_storage[instr[0].text]
 
     def JUMPIFNEQ(self, instr):
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
-        if (v1_t == 'nil' or v2_t == 'nil') or (v1_t == v2_t):
-            if v1_t == v2_t and v1 != v2:
+        if v1_t == 'nil' or v2_t == 'nil':
+            if v1_t != v2_t:
                 self.current = self.label.labels_storage[instr[0].text]
-            if (v1_t == 'nil' and v2_t != 'nil') or (v1_t != 'nil' and v2_t == 'nil'):
-                self.current = self.label.labels_storage[instr[0].text]
-        else:
+                return
+            else:
+                return
+        if v1_t != v2_t:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1_t == 'bool':
+            v1 = self.bool_ipp_to_py(v1)
+            v2 = self.bool_ipp_to_py(v2)
+        if v1 != v2:
+            self.current = self.label.labels_storage[instr[0].text]
 
     def EXIT(self, instr):
         value, symb_type = self.resolve_symb(instr, 0)
         if symb_type != 'int':
-            err("EXIT: Invalid value.", ERR_VALUE_WRONG)
+            err("EXIT: Invalid value.", ERR_TYPES)
         value = int(value)
         if value < 0 or value > 49:
             err("EXIT: Value out of range.", ERR_VALUE_WRONG)
@@ -688,20 +696,10 @@ class Interpret:
         if v1[1] != v2[1]:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1[1] == 'bool':
-            if v1[0] == 'true':
-                v1[0] = True
-            else:
-                v1[0] = False
-        if v2[1] == 'bool':
-            if v2[0] == 'true':
-                v2[0] = True
-            else:
-                v2[0] = False
+            v1[0] = self.bool_ipp_to_py(v1[0])
+            v2[0] = self.bool_ipp_to_py(v2[0])
         value = v1[0] < v2[0]
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def GTS(self, _):
@@ -715,20 +713,10 @@ class Interpret:
         if v1[1] != v2[1]:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1[1] == 'bool':
-            if v1[0] == 'true':
-                v1[0] = True
-            else:
-                v1[0] = False
-        if v2[1] == 'bool':
-            if v2[0] == 'true':
-                v2[0] = True
-            else:
-                v2[0] = False
+            v1[0] = self.bool_ipp_to_py(v1[0])
+            v2[0] = self.bool_ipp_to_py(v2[0])
         value = v1[0] > v2[0]
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def EQS(self, _):
@@ -738,30 +726,17 @@ class Interpret:
         except:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if v1[1] == 'nil' or v2[1] == 'nil':
-            value = (v1[1] == v2[1])
-            if value:
-                value = 'true'
-            else:
-                value = 'false'
+            value = (v1[1] == v2[1]) # both are nil
+            value = self.bool_py_to_ipp(value)
             self.data_stack.append([value, 'bool'])
             return
         if v1[1] != v2[1]:
             err("Comparing values of two different types.", ERR_TYPES)
         if v1[1] == 'bool':
-            if v1[0] == 'true':
-                v1[0] = True
-            else:
-                v1[0] = False
-        if v2[1] == 'bool':
-            if v2[0] == 'true':
-                v2[0] = True
-            else:
-                v2[0] = False
+            v1[0] = self.bool_ipp_to_py(v1[0])
+            v2[0] = self.bool_ipp_to_py(v2[0])
         value = (v1[0] == v2[0])
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def ANDS(self, _):
@@ -772,19 +747,10 @@ class Interpret:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if v1[1] != 'bool' or v2[1] != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v1[0] == 'true':
-            v1[0] = True
-        else:
-            v1[0] = False
-        if v2[0] == 'true':
-            v2[0] = True
-        else:
-            v2[0] = False
+        v1[0] = self.bool_ipp_to_py(v1[0])
+        v2[0] = self.bool_ipp_to_py(v2[0])
         value = v1[0] and v2[0]
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def ORS(self, _):
@@ -795,19 +761,10 @@ class Interpret:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if v1[1] != 'bool' or v2[1] != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v1[0] == 'true':
-            v1[0] = True
-        else:
-            v1[0] = False
-        if v2[0] == 'true':
-            v2[0] = True
-        else:
-            v2[0] = False
+        v1[0] = self.bool_ipp_to_py(v1[0])
+        v2[0] = self.bool_ipp_to_py(v2[0])
         value = v1[0] or v2[0]
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def NOTS(self, _):
@@ -817,15 +774,9 @@ class Interpret:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if v[1] != 'bool':
             err("Logical operators only accept bool values.", ERR_TYPES)
-        if v[0] == 'true':
-            v[0] = True
-        else:
-            v[0] = False
+        v[0] = self.bool_ipp_to_py(v[0])
         value = not v[0]
-        if value:
-            value = 'true'
-        else:
-            value = 'false'
+        value = self.bool_py_to_ipp(value)
         self.data_stack.append([value, 'bool'])
 
     def INT2CHARS(self, _):
@@ -851,6 +802,8 @@ class Interpret:
             err("STRI2INT only accepts string value.", ERR_TYPES)
         if i[1] != 'int':
             err("STRI2INT: invalid index type.", ERR_TYPES)
+        if i[0] < 0 or i[0] >= len(v[0]):
+            err("STRI2INT: index out of range.", ERR_STRING)
         try:
             value = ord(v[0][i[0]])
         except IndexError:
@@ -868,13 +821,19 @@ class Interpret:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if lbl not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
-        if (v1[1] == 'nil' or v2[1] == 'nil') or (v1[1] == v2[1]):
-            if v1[1] == 'nil' and v2[1] == 'nil':
+        if v1[1] == 'nil' or v2[1] == 'nil':
+            if v1[1] == v2[1]:
                 self.current = self.label.labels_storage[lbl]
-            elif v1[1] == v2[1] and v1[0] == v2[0]:
-                self.current = self.label.labels_storage[lbl]
-        else:
+                return
+            else:
+                return
+        if v1[1] != v2[1]:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1[1] == 'bool':
+            v1[0] = self.bool_ipp_to_py(v1[0])
+            v2[0] = self.bool_ipp_to_py(v2[0])
+        if v1[0] == v2[0]:
+            self.current = self.label.labels_storage[lbl]
 
     def JUMPIFNEQS(self, instr):
         try:
@@ -885,13 +844,19 @@ class Interpret:
             err("The data stack is empty.", ERR_VALUE_MISSING)
         if lbl not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
-        if (v1[1] == 'nil' or v2[1] == 'nil') or (v1[1] == v2[1]):
-            if v1[1] == v2[1] and v1[0] != v2[0]:
+        if v1[1] == 'nil' or v2[1] == 'nil':
+            if v1[1] != v2[1]:
                 self.current = self.label.labels_storage[lbl]
-            if (v1[1] == 'nil' and v2[1] != 'nil') or (v1[1] != 'nil' and v2[1] == 'nil'):
-                self.current = self.label.labels_storage[lbl]
-        else:
+                return
+            else:
+                return
+        if v1[1] != v2[1]:
             err("Comparing values of two different types.", ERR_TYPES)
+        if v1[1] == 'bool':
+            v1[0] = self.bool_ipp_to_py(v1[0])
+            v2[0] = self.bool_ipp_to_py(v2[0])
+        if v1[0] != v2[0]:
+            self.current = self.label.labels_storage[lbl]
 
 
 Interpret()
