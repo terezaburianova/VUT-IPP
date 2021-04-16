@@ -107,7 +107,7 @@ function matchLabel($argNum, $value) {
  */
 function matchType($argNum, $value) {
     $regType = '/^(int|string|bool)$/';
-    if (preg_match($regLabel ,$value) === 1) {
+    if (preg_match($regType ,$value) === 1) {
         echo("\n\t\t<arg$argNum type=\"type\">$value</arg$argNum>");
     } else {
         //! ERROR: invalid argument
@@ -235,6 +235,7 @@ while($line = fgets(STDIN)) {
         case 'INT2CHAR':
         case 'STRLEN':
         case 'TYPE':
+        case 'NOT':
             checkArg($words, 3);
             matchVar(1, $words[1]);
             matchSymb(2, $words[2]);
@@ -257,7 +258,6 @@ while($line = fgets(STDIN)) {
         case 'EQ':
         case 'AND':
         case 'OR':
-        case 'NOT':
         case 'STRI2INT':
         case 'CONCAT':
         case 'GETCHAR':
