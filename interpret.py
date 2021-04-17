@@ -8,7 +8,11 @@ import xml.etree.ElementTree as ET
 import sys
 import re
 import string
+from operator import attrgetter
 
+"""
+List of error codes.
+"""
 ERR_INVALID_FORMAT = 31
 ERR_INVALID_STRUCT = 32
 ERR_SEM = 52
@@ -21,11 +25,22 @@ ERR_STRING = 58
 
 
 def err(msg, code):
+    """
+    Prints the error message and exists with the correct error code.
+    :param msg: Error message.
+    :param code: Error code.
+    """
     print(msg, file=sys.stderr)
     sys.exit(code)
 
 
 def value_validity(attr_type, text):
+    """
+    Checks the value validity using regex.
+    :param attr_type: Type of the data.
+    :param text: Checked value.
+    :return: True if valid.
+    """
     text_regex = {
         'var': r'^(GF|LF|TF)@[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
         'label': r'^[a-žA-Ž_\-$&%*!?][a-žA-Ž0-9_\-$&%*!?]*$',
@@ -47,6 +62,9 @@ def value_validity(attr_type, text):
 
 
 class Preparation:
+    """
+    Parses and checks the validity of the source XML.
+    """
     int_source = sys.stdin
     int_input = sys.stdin
     instruction_dict = {}
@@ -59,6 +77,9 @@ class Preparation:
         self.xml_validity()
 
     def fill_dictionary(self):
+        """
+        Fills the dictionary of valid instructions with information about their arguments.
+        """
         for key in ['CREATEFRAME', 'PUSHFRAME', 'POPFRAME', 'RETURN', 'BREAK']:
             self.instruction_dict[key] = []
         for key in ['DEFVAR', 'POPS']:
@@ -80,6 +101,9 @@ class Preparation:
             self.instruction_dict[key] = []
 
     def argument_parse(self):
+        """
+        Parses the console arguments.
+        """
         parser = argparse.ArgumentParser(description='Add path to source or input. At least one has to be set.')
         parser.add_argument('--source')
         parser.add_argument('--input')
@@ -92,6 +116,9 @@ class Preparation:
             self.int_input = open(args.input, "r")
 
     def xml_parse(self):
+        """
+        Parses the XML and sorts the instructions and arguments correctly.
+        """
         try:
             tree = ET.parse(self.int_source)
             self.root = tree.getroot()
@@ -109,21 +136,19 @@ class Preparation:
             except:
                 err("Invalid order.", ERR_INVALID_STRUCT)
         # * sort instructions based on "order" attribute
-
         for child in self.root.iter():
             try:
                 self.root[:] = sorted(self.root.findall('instruction'), key=lambda child: int(child.get('order')))
             except:
                 err("Invalid order.", ERR_INVALID_STRUCT)
-
-        # TODO: razeni argumentu - nefunkcni!
-        # for arg in self.root.iter():
-        #     try:
-        #         self.root[:] = sorted(self.root.findall("instruction/*"), key=lambda arg: arg.tag)
-        #     except:
-        #         err("wrong value", ERR_INVALID_STRUCT)
+        # * sort arguments
+        for node in self.root.findall("*"):
+            node[:] = sorted(node, key=attrgetter("tag"))
 
     def xml_validity(self):
+        """
+        Checks the validity of the source XML.
+        """
         # * check program tag validity
         if self.root.tag != 'program':
             err("The 'program' tag is missing.", ERR_INVALID_STRUCT)
@@ -171,15 +196,28 @@ class Preparation:
 
 
 class Frame:
+    """
+    A frame holding variables - temporary/local/global.
+    """
     def __init__(self):
         self.variables = {}
 
     def define_variable(self, var_name):
+        """
+        Create a variable in the frame.
+        :param var_name: Variable name.
+        """
         if var_name in self.variables:
             err(f"Variable '{var_name}' is already defined.", ERR_SEM)
         self.variables[var_name] = None
 
     def edit_variable(self, var_name, value, value_type):
+        """
+        Changes the value and possibly the type of the variable.
+        :param var_name: Variable name.
+        :param value: New value.
+        :param value_type: New type.
+        """
         if value_type == 'int':
             try:
                 value = int(value)
@@ -196,6 +234,12 @@ class Frame:
         self.variables[var_name] = [value_type, value]
 
     def get_var_value(self, var_name, geterr=True):
+        """
+        Gets the value of a variable defined in the frame.
+        :param var_name: Variable name.
+        :param geterr: When true, an empty variable stops the script with an error.
+        :return: Variable value and type or empty strings.
+        """
         if var_name not in self.variables:
             err(f"Variable '{var_name}' does not exist.", ERR_VAR)
         if self.variables[var_name] is None:
@@ -207,6 +251,9 @@ class Frame:
 
 
 class Labels:
+    """
+    Reads and stores the labels before starting the interpretation.
+    """
     labels_storage = {}
 
     def __init__(self, xml_root):
@@ -220,6 +267,9 @@ class Labels:
 
 
 class Interpret:
+    """
+    The main class containing the instructions with their actions.
+    """
     GF = None
     TF = None
     LF_stack = []
@@ -242,10 +292,19 @@ class Interpret:
         self.prep.int_input.close()
 
     def call_instruction(self, name: str, instr):
+        """
+        Dynamically calls the correct method based on the opcode of the current instruction.
+        :param name: Instruction name.
+        :param instr: Current instruction object.
+        """
         if hasattr(self, name) and callable(instr_method := getattr(self, name)):
             instr_method(instr)
 
     def check_frame(self, frame_type):
+        """
+        Checks if a frame exists.
+        :param frame_type: Temporary/local/global frame. TF/LF/GF/
+        """
         if frame_type == 'LF':
             if self.LF_stack:
                 self.LF = self.LF_stack[-1]
@@ -256,12 +315,27 @@ class Interpret:
                 err("Frame does not exist.", ERR_FRAME)
 
     def return_frame(self, instr, var_index):
+        """
+        Returns the frame object.
+        :param instr: Current instruction object.
+        :param var_index: Index of the considered instruction argument.
+        :return: Frame object, value after the '@'.
+        """
         var = instr[var_index].text.split('@', 1)
         self.check_frame(var[0])
         current_frame = getattr(self, var[0])
+        if not var[1]:
+            var[1] = ''
         return current_frame, var[1]
 
     def resolve_symb(self, instr, symb_index, geterr=True):
+        """
+        Get the value of symbol, which is either a constant or a variable.
+        :param instr: Current instruction object.
+        :param symb_index: Index of the considered instruction argument.
+        :param geterr: If True, throws an exception in case of an empty variable.
+        :return: Symbol value and type.
+        """
         symb_type = instr[symb_index].get('type')
         symb_val = None
         if symb_type == 'var':
@@ -279,6 +353,11 @@ class Interpret:
         return symb_val, symb_type
 
     def replace_sequences(self, value):
+        """
+        Replaces the escape sequences with corresponding characters.
+        :param value: String to convert.
+        :return: Converted string.
+        """
         matches = re.findall(r'\\[0-9]{3}', value)
         for val in matches:
             try:
@@ -289,26 +368,48 @@ class Interpret:
         return value
 
     def bool_ipp_to_py(self, value):
+        """
+        Changes the IPPcode21 boolean to Python boolean.
+        :param value: IPPcode21 boolean.
+        :return: Corresponding Python boolean.
+        """
         if value == 'true':
             return True
         if value == 'false':
             return False
 
     def bool_py_to_ipp(self, value):
+        """
+        Changes the Python boolean to IPPcode21 boolean.
+        :param value: Python boolean.
+        :return: Corresponding IPPcode21 boolean.
+        """
         if value:
             return 'true'
         if not value:
             return 'false'
 
     def MOVE(self, instr):
+        """
+        MOVE instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         symb_val, symb_type = self.resolve_symb(instr, 1)
         current_frame.edit_variable(var_name, symb_val, symb_type)
 
     def CREATEFRAME(self, _):
+        """
+        CREATEFRAME instruction
+        :param _: Current instruction object.
+        """
         self.TF = Frame()
 
     def PUSHFRAME(self, _):
+        """
+        PUSHFRAME instruction
+        :param _: Current instruction object.
+        """
         if self.TF is None:
             err("Temporary frame is not defined.", ERR_FRAME)
         self.LF_stack.append(self.TF)
@@ -316,6 +417,10 @@ class Interpret:
         self.TF = None
 
     def POPFRAME(self, _):
+        """
+        POPFRAME instruction
+        :param _: Current instruction object.
+        """
         if not self.LF_stack:
             err("Local frame stack is empty.", ERR_FRAME)
         self.TF = self.LF_stack.pop()
@@ -325,26 +430,46 @@ class Interpret:
             self.LF = None
 
     def DEFVAR(self, instr):
+        """
+        DEFVAR instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         current_frame.define_variable(var_name)
 
     def CALL(self, instr):
+        """
+        CALL instruction
+        :param instr: Current instruction object.
+        """
         self.call_stack.append(self.current)
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         self.current = self.label.labels_storage[instr[0].text]
 
     def RETURN(self, _):
+        """
+        RETURN instruction
+        :param _: Current instruction object.
+        """
         if not self.call_stack:
             err("Call-stack value missing.", ERR_VALUE_MISSING)
         self.current = self.call_stack.pop()
         # TODO: tvoreni a uklizeni ramcu
 
     def PUSHS(self, instr):
+        """
+        PUSHS instruction
+        :param instr: Current instruction object.
+        """
         v1, v1_t = self.resolve_symb(instr, 0)
         self.data_stack.append([v1, v1_t])
 
     def POPS(self, instr):
+        """
+        POPS instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         if not self.data_stack:
             err("Data stack is empty.", ERR_VALUE_MISSING)
@@ -352,6 +477,10 @@ class Interpret:
         current_frame.edit_variable(var_name, value[0], value[1])
 
     def ADD(self, instr):
+        """
+        ADD instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -360,6 +489,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 + v2, 'int')
 
     def SUB(self, instr):
+        """
+        SUB instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -368,6 +501,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 - v2, 'int')
 
     def MUL(self, instr):
+        """
+        MUL instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -376,6 +513,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 * v2, 'int')
 
     def IDIV(self, instr):
+        """
+        IDIV instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -386,6 +527,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 // v2, 'int')
 
     def LT(self, instr):
+        """
+        LT instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -399,6 +544,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 < v2, 'bool')
 
     def GT(self, instr):
+        """
+        GT instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -412,6 +561,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 > v2, 'bool')
 
     def EQ(self, instr):
+        """
+        EQ instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -426,6 +579,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 == v2, 'bool')
 
     def AND(self, instr):
+        """
+        AND instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -436,6 +593,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 and v2, 'bool')
 
     def OR(self, instr):
+        """
+        OR instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v1, v1_t = self.resolve_symb(instr, 1)
         v2, v2_t = self.resolve_symb(instr, 2)
@@ -446,6 +607,10 @@ class Interpret:
         current_frame.edit_variable(var_name, v1 or v2, 'bool')
 
     def NOT(self, instr):
+        """
+        NOT instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v, v_t = self.resolve_symb(instr, 1)
         if v_t != 'bool':
@@ -454,6 +619,10 @@ class Interpret:
         current_frame.edit_variable(var_name, not v, 'bool')
 
     def INT2CHAR(self, instr):
+        """
+        INT2CHAR instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v, v_t = self.resolve_symb(instr, 1)
         if v_t != 'int':
@@ -465,6 +634,10 @@ class Interpret:
         current_frame.edit_variable(var_name, value, 'string')
 
     def STRI2INT(self, instr):
+        """
+        STRI2INT instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         v, v_t = self.resolve_symb(instr, 1)
         i, i_t = self.resolve_symb(instr, 2)
@@ -483,6 +656,10 @@ class Interpret:
         current_frame.edit_variable(var_name, value, 'int')
 
     def READ(self, instr):
+        """
+        READ instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         value = self.prep.int_input.readline()
         if value == '':
@@ -503,12 +680,20 @@ class Interpret:
         current_frame.edit_variable(var_name, value, in_type)
 
     def WRITE(self, instr):
+        """
+        WRITE instruction
+        :param instr: Current instruction object.
+        """
         value, out_type = self.resolve_symb(instr, 0)
         if out_type == 'nil':
             value = ''
         print(value, end='')
 
     def CONCAT(self, instr):
+        """
+        CONCAT instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         s1, s1_t = self.resolve_symb(instr, 1)
         s2, s2_t = self.resolve_symb(instr, 2)
@@ -517,6 +702,10 @@ class Interpret:
         current_frame.edit_variable(var_name, s1+s2, 'string')
 
     def STRLEN(self, instr):
+        """
+        STRLEN instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         s, s_t = self.resolve_symb(instr, 1)
         if s_t != 'string':
@@ -524,6 +713,10 @@ class Interpret:
         current_frame.edit_variable(var_name, len(s), 'int')
 
     def GETCHAR(self, instr):
+        """
+        GETCHAR instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         s, s_t = self.resolve_symb(instr, 1)
         i, i_t = self.resolve_symb(instr, 2)
@@ -539,6 +732,10 @@ class Interpret:
         current_frame.edit_variable(var_name, char, 'string')
 
     def SETCHAR(self, instr):
+        """
+        SETCHAR instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         s, s_t = current_frame.get_var_value(var_name)
         i, i_t = self.resolve_symb(instr, 1)
@@ -558,19 +755,35 @@ class Interpret:
         current_frame.edit_variable(var_name, s, 'string')
 
     def TYPE(self, instr):
+        """
+        TYPE instruction
+        :param instr: Current instruction object.
+        """
         current_frame, var_name = self.return_frame(instr, 0)
         t, t_t = self.resolve_symb(instr, 1, False)
         current_frame.edit_variable(var_name, t_t, 'string')
 
     def LABEL(self, _):
+        """
+        LABEL instruction
+        :param instr: Current instruction object.
+        """
         pass
 
     def JUMP(self, instr):
+        """
+        JUMP instruction
+        :param instr: Current instruction object.
+        """
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         self.current = self.label.labels_storage[instr[0].text]
 
     def JUMPIFEQ(self, instr):
+        """
+        JUMPIFEQ instruction
+        :param instr: Current instruction object.
+        """
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         v1, v1_t = self.resolve_symb(instr, 1)
@@ -590,6 +803,10 @@ class Interpret:
             self.current = self.label.labels_storage[instr[0].text]
 
     def JUMPIFNEQ(self, instr):
+        """
+        JUMPIFNEQ instruction
+        :param instr: Current instruction object.
+        """
         if instr[0].text not in self.label.labels_storage:
             err("Label does not exist.", ERR_SEM)
         v1, v1_t = self.resolve_symb(instr, 1)
@@ -609,6 +826,10 @@ class Interpret:
             self.current = self.label.labels_storage[instr[0].text]
 
     def EXIT(self, instr):
+        """
+        EXIT instruction
+        :param instr: Current instruction object.
+        """
         value, symb_type = self.resolve_symb(instr, 0)
         if symb_type != 'int':
             err("EXIT: Invalid value.", ERR_TYPES)
@@ -618,10 +839,18 @@ class Interpret:
         sys.exit(value)
 
     def DPRINT(self, instr):
+        """
+        DPRINT instruction
+        :param instr: Current instruction object.
+        """
         value, _ = self.resolve_symb(instr, 0)
         print(value, file=sys.stderr)
 
     def BREAK(self, instr):
+        """
+        BREAK instruction
+        :param instr: Current instruction object.
+        """
         GF_val = self.GF.variables
         if self.TF:
             TF_val = self.TF.variables
@@ -639,11 +868,21 @@ class Interpret:
                  f"Local frames in stack: {len(self.LF_stack)}\n"
         print(string, file=sys.stderr)
 
-    ########## STACK BONUS ##########
+    """
+    Instructions for the STACK bonus.
+    """
     def CLEARS(self, _):
+        """
+        CLEARS instruction - STACK
+        :param _: Current instruction object.
+        """
         self.data_stack.clear()
 
     def ADDS(self, _):
+        """
+        ADDS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -654,6 +893,10 @@ class Interpret:
         self.data_stack.append([v1[0]+v2[0], 'int'])
 
     def SUBS(self, _):
+        """
+        SUBS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -664,6 +907,10 @@ class Interpret:
         self.data_stack.append([v1[0]-v2[0], 'int'])
 
     def MULS(self, _):
+        """
+        MULS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -674,6 +921,10 @@ class Interpret:
         self.data_stack.append([v1[0]*v2[0], 'int'])
 
     def IDIVS(self, _):
+        """
+        IDIVS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -686,6 +937,10 @@ class Interpret:
         self.data_stack.append([v1[0] // v2[0], 'int'])
 
     def LTS(self, _):
+        """
+        LTS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -703,6 +958,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def GTS(self, _):
+        """
+        GTS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -720,6 +979,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def EQS(self, _):
+        """
+        EQS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -740,6 +1003,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def ANDS(self, _):
+        """
+        ANDS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -754,6 +1021,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def ORS(self, _):
+        """
+        ORS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -768,6 +1039,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def NOTS(self, _):
+        """
+        NOTS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v = self.data_stack.pop()
         except:
@@ -780,6 +1055,10 @@ class Interpret:
         self.data_stack.append([value, 'bool'])
 
     def INT2CHARS(self, _):
+        """
+        INT2CHARS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             v = self.data_stack.pop()
         except:
@@ -793,6 +1072,10 @@ class Interpret:
         self.data_stack.append([value, 'string'])
 
     def STRI2INTS(self, _):
+        """
+        STR2INTS instruction - STACK
+        :param _: Current instruction object.
+        """
         try:
             i = self.data_stack.pop()
             v = self.data_stack.pop()
@@ -813,6 +1096,10 @@ class Interpret:
         self.data_stack.append([value, 'int'])
 
     def JUMPIFEQS(self, instr):
+        """
+        JUMPIFEQS instruction - STACK
+        :param instr: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
@@ -836,6 +1123,10 @@ class Interpret:
             self.current = self.label.labels_storage[lbl]
 
     def JUMPIFNEQS(self, instr):
+        """
+        JUMPIFNEQS instruction - STACK
+        :param instr: Current instruction object.
+        """
         try:
             v2 = self.data_stack.pop()
             v1 = self.data_stack.pop()
