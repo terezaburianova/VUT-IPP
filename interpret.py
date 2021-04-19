@@ -30,7 +30,7 @@ def err(msg, code):
     :param msg: Error message.
     :param code: Error code.
     """
-    print(msg, file=sys.stderr)
+    sys.stderr.write(msg)
     sys.exit(code)
 
 
@@ -113,7 +113,10 @@ class Preparation:
         if args.source:
             self.int_source = args.source
         if args.input:
-            self.int_input = open(args.input, "r")
+            try:
+                self.int_input = open(args.input, "r")
+            except:
+                err("Unable to open input file.", 11)
 
     def xml_parse(self):
         """
@@ -661,7 +664,10 @@ class Interpret:
         :param instr: Current instruction object.
         """
         current_frame, var_name = self.return_frame(instr, 0)
-        value = self.prep.int_input.readline()
+        try:
+            value = self.prep.int_input.readline()
+        except:
+            err("Unable to read from the input file.", 11)
         if value == '':
             value = 'nil'
             in_type = 'nil'
