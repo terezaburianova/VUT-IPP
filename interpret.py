@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.8
-"""VUT FIT - IPP, Project 2, IPPcode21 interpret. 
-Author: Tereza Burianova (xburia28@vutbr.cz)
+"""interpret.py: VUT FIT - IPP, Project 2, IPPcode21 interpret. 
+__author__  = "Tereza Burianova"
+__email__   = "xburia28@vutbr.cz"
 """
 
 import argparse
