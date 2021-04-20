@@ -1,5 +1,8 @@
 *.zip
-supplementary-tests
-ippcode.txt
 .vscode
-*.xml
+.idea
+tests
+isitokay
+jexamxml
+is_it_ok.sh
+*.html
